@@ -46,7 +46,7 @@ class Point:
         self.n = num
 
 #------筛选椭圆函数，待修正------#
-def checkEllipse_simple(img, x, y, a, b): # 函数功能：稳定完整的识别出靶标的椭圆
+def checkEllipse_simple(img, x, y, a, b): # 函数功能：初步识别检测出靶标的椭圆（不稳定）
     # 越界pass
     if x + a+3 > WIDETH or y + a+3 > HEIGHT:
         return False
@@ -87,15 +87,14 @@ def locatePoint(p_list, lp_list, radius): # 函数功能：稳定完整的实现
             for m in range(0, len(p_list)):
                 if m == i or m == j:
                     continue
-                # 误差评估，计算距离
+                # 用距离和半径的百分比做误差评估
                 error = math.sqrt(pow(med_x - p_list[m].x, 2) + pow(med_y - p_list[m].y, 2))
                 if error < Error:
                     addPoint(p_list, lp_list, i, num+1)     #  1  4
                     addPoint(p_list, lp_list, m, num+2)     #  2  5
                     addPoint(p_list, lp_list, j, num+3)     #  3  6
-                    #print(i+1, m+1, j+1)
                     num += 3
-
+                    # 以上一定要找出需要的6点，否则算作无法进行进一步的计算。
                     temp[i].n = -1  # -1说明已经选定
                     temp[m].n = -1
                     temp[j].n = -1
@@ -215,25 +214,23 @@ else:
         ret, img = cap.read()
         ret, img2 = cap.read()
 
-        #-----基础图形处理-----#
+        #-----一帧基础图形处理-----#
         f_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         f_bulr = cv2.GaussianBlur(f_gray, (5, 5), 0)
 
         ret,f_thresh = cv2.threshold(f_bulr, 127, 255, cv2.THRESH_BINARY_INV)  # 阈值127，变成255
-        #cv2.imshow("thresh", f_thresh)
 
         f_can = cv2.Canny(f_thresh, 50, 150, 3)
-        #cv2.imshow('canny', f_can)
         #-----结束-----#
 
         #-----一帧椭圆检测-------#
         image, contours, hierarchy = cv2.findContours(f_can, cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
 
         count =0 # 用来计数
-        sum = 0
+        sum = 0  # 用来统计半径
         for cnt in contours:
-            if len(cnt) > 4: # 点数超过5才能拟合椭圆
+            if len(cnt) > 10: # 点数超过5才能拟合椭圆
                 ell = cv2.fitEllipse(cnt)
 
                 b_double = ell[1][0] #拟合的矩阵宽，即短半轴2倍
@@ -279,7 +276,7 @@ else:
             print('No enough ellipse in sight!')
         else:
             #-----排序测试------#
-            locatePoint(point_list, lpoint_list,sum/count)
+            locatePoint(point_list, lpoint_list, sum/count)
 
             for i in range(0, len(lpoint_list)):
                 font = cv2.FONT_HERSHEY_SIMPLEX
