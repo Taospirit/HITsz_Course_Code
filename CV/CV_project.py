@@ -124,6 +124,11 @@ def locatePoint(p_list, lp_list, radius): # 函数功能：稳定完整的实现
         if cen_78_y > cen_25_y and lp_list[6].x < lp_list[7].x: # 图像是倒的
             swapPoint(lp_list, 6, 7)    # 7\8点交换
 
+
+        #dadas
+        # adasdas
+
+
         # 至此，lpoint_list已经实现了对p_list元素的重排序
 
         #-----定位方案待选------#
