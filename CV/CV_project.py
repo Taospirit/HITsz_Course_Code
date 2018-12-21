@@ -1,6 +1,16 @@
 import cv2
 import numpy as np
 import math
+
+# 守夜人宣言：
+# 长夜将至，我从今开始守望，至死方休。
+# 我将不娶妻，不封地，不生子。
+# 我将不戴王冠，不争荣宠。
+# 我将尽忠职守，生死于斯。
+# 我是黑暗中的利剑，长城上的守卫。
+# 抵御寒冷的烈焰，破晓时分的光线，唤醒眠者的号角，守护王国的坚盾。
+# 我将生命与荣耀献给守夜人，今夜如此，夜夜皆然。
+
 WIDETH = 1280
 HEIGHT = 720
 
@@ -14,16 +24,31 @@ point_list = []
 lpoint_list = []
 choose_point_list = []
 
+camera_matrix = np.array(([693.2, 0, 666.8], # 内参矩阵
+                          [0, 693.4, 347.7],
+                          [0, 0, 1]), dtype=np.double)
+dist_coefs = np.array([-0.050791, 0.217163, 0.0000878, -0.000388, -0.246122], dtype=np.double) # k1 k2 p1 p2 k3
+object_3D_points = np.array(([], []), dtype=np.double)  # 3D 物理坐标
+
+image_2D_points = np.array(([0, 32.29], [35, 0], [85, 0], [120, 32.29]), dtype=np.double)   # 图像坐标点
+
+#  坐标构建如下：
+#  ---2--3--------->X
+#  1        4
+#  |
+#  |
+#  V
+
 class Point:
     def __init__(self, x_param, y_param, num):
         self.x = x_param
         self.y = y_param
         self.n = num
 
-# ------椭圆初级删选，待改进------#
-def isEllipse(img, x, y, a, b): # x\y是椭圆质点坐标点，a\b是椭圆长短半轴
+#------筛选椭圆函数，待修正------#
+def checkEllipse_simple(img, x, y, a, b): # 函数功能：稳定完整的识别出靶标的椭圆
     # 越界pass
-    if x + a+3 > WIDETH or y + a+3 > HEIGHT: # 这里的3是留出的小裕量
+    if x + a+3 > WIDETH or y + a+3 > HEIGHT:
         return False
     if x - a <0 or y - a <0:
         return False
@@ -34,46 +59,47 @@ def isEllipse(img, x, y, a, b): # x\y是椭圆质点坐标点，a\b是椭圆长�
         if img[y - i, x] == 0 or img[y + i, x] == 0:
             return False
     # 框外一点儿有白色pass
-    for m in range(a+1, a+3):#同样留出小裕量
+    for m in range(a+1, a+3):
         if img[y, x + m] == 255 or img[y, x - m] == 255:
             return False
         if img[y - m, x] == 255 or img[y + m,x] == 255:
             return False
     return True
 
-# ------对符合的椭圆重定位------#
-def locatePoint(p_list, lp_list, radius):
-    temp = [] # 临时list
-    for i in range(0 ,len(p_list)):
+# -------对符合的椭圆重排序-------#
+def locatePoint(p_list, lp_list, radius): # 函数功能：稳定完整的实现靶标定位
+    temp = []
+    for i in range(0, len(p_list)):  # 复制p_list给temp
         addPoint(p_list, temp, i, i+1)
-    #                    1 4
+    #                   1 4
     #   标准位置定义:   7     8
-    #                    2 5
-    #                    3 6
-    
-    # ------筛选出中间6点位置------#
-    Error = radius * error_alpha  # 参考误差
+    #                   2 5
+    #                   3 6
+
+    #-----筛选出中间6点位置-----#
+    Error = radius * error_alpha  # 用距离圆心占半径的百分比评估误差
     num = 0
     for i in range(0, len(p_list)):
         for j in range(i+1, len(p_list)):
             med_x = (p_list[i].x + p_list[j].x) / 2
             med_y = (p_list[i].y + p_list[j].y) / 2
-            
+
             for m in range(0, len(p_list)):
                 if m == i or m == j:
-                    continue         
-                # 用距离做误差评估：    
+                    continue
+                # 误差评估，计算距离
                 error = math.sqrt(pow(med_x - p_list[m].x, 2) + pow(med_y - p_list[m].y, 2))
                 if error < Error:
-                    addPoint(p_list, lp_list, i, num+1) 
-                    addPoint(p_list, lp_list, i, num+1)
-                    addPoint(p_list, lp_list, i, num+1)
+                    addPoint(p_list, lp_list, i, num+1)     #  1  4
+                    addPoint(p_list, lp_list, m, num+2)     #  2  5
+                    addPoint(p_list, lp_list, j, num+3)     #  3  6
+                    #print(i+1, m+1, j+1)
                     num += 3
-                    
-                    temp[i].n = -1
+
+                    temp[i].n = -1  # -1说明已经选定
                     temp[m].n = -1
                     temp[j].n = -1
-    # ------6点筛选完毕------#
+    #-----筛选6点完毕------#
 
     #-----确定7\8点------#
     if len(lp_list) != 6:
@@ -82,12 +108,12 @@ def locatePoint(p_list, lp_list, radius):
         for p in range(0, len(temp)):
             if temp[p].n == -1:
                 continue
-            if distance(p_list, lp_list, p, 2) > 8*radius : # 这里是为避免其他椭圆影响，只检测适当距离内的椭圆存在
+            if distance(p_list, lp_list, p, 2) > 8*radius : # 根据距离进一步筛选
                 continue
             else:
                 num += 1
-                addPoint(p_list, lp_list, p, num)   # 把 7 和 8 添加进数组
-          
+                addPoint(p_list, lp_list, p, num)   # 7 和 8 添加进数组
+
     if len(lp_list) < 8:
         pass
     else:
@@ -98,9 +124,8 @@ def locatePoint(p_list, lp_list, radius):
             swapPoint(lp_list, 6, 7)    # 7\8点交换
         if cen_78_y > cen_25_y and lp_list[6].x < lp_list[7].x: # 图像是倒的
             swapPoint(lp_list, 6, 7)    # 7\8点交换
-            
-    # 至此，lpoint_list已经实现了对p_list元素的重排序
-    # 7、8点的位置已完全确定，中间6点位置还没绝对确定，但无关紧要。
+
+        # 至此，lpoint_list已经实现了对p_list元素的重排序
 
         #-----定位方案待选------#
         #把点7定位为1，点8为定位为4
@@ -175,8 +200,6 @@ def addPoint(src_list, new_list, i, n): #将src_list中的第i个索引的数据
     p_new = Point(src_list[i].x, src_list[i].y, n)
     new_list.append(p_new)
 
-# def main():
-
 cap = cv2.VideoCapture(1)
 
 if (cap.isOpened() == False):
@@ -232,8 +255,7 @@ else:
                 b = int(np.around(b_double/2))
                 theta = ell[2] # 旋转角度
 
-                if  isEllipse(f_thresh, cen_x, cen_y, a, b):
-                    #if  checkEllipse(cnt, cen_x, cen_y, a, b, theta):
+                if  checkEllipse_simple(f_thresh, cen_x, cen_y, a, b):
                     #-----添加进组并计数、标记-----#
                     count += 1
                     sum = sum + b # sum是所有短半轴的集合
@@ -258,18 +280,13 @@ else:
         else:
             #-----排序测试------#
             locatePoint(point_list, lpoint_list,sum/count)
-            #print(len(lpoint_list))
 
             for i in range(0, len(lpoint_list)):
-                #print(lpoint_list[i].x, lpoint_list[i].y, lpoint_list[i].n)
-
                 font = cv2.FONT_HERSHEY_SIMPLEX
                 cv2.putText(frame, str(lpoint_list[i].n), (lpoint_list[i].x, lpoint_list[i].y), font, 1, (0, 255, 0), 2,
                             cv2.LINE_AA)
 
             for i in range(0, len(point_list)):
-                #print(lpoint_list[i].x, lpoint_list[i].y, lpoint_list[i].n)
-
                 font = cv2.FONT_HERSHEY_SIMPLEX
                 cv2.putText(img, str(point_list[i].n), (point_list[i].x, point_list[i].y), font, 1, (0, 255, 0), 2,
                             cv2.LINE_AA)
@@ -285,7 +302,7 @@ else:
         choose_point_list = []# 结束后置空
         #------处理圆心坐标结束----#
 
-        #cv2.imshow('ell', frame)
+        cv2.imshow('ell', frame)
         #cv2.imshow('point_lis', img)
         #cv2.imshow('fresholde', f_thresh)
         cv2.imshow('locate', img2)
@@ -300,3 +317,4 @@ cv2.destroyAllWindows()
 # if __name__ == '__main__':
 #
 #     main()
+
