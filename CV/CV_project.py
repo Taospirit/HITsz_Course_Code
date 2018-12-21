@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 import math
-
 WIDETH = 1280
 HEIGHT = 720
 
@@ -14,7 +13,6 @@ method_num = 0
 point_list = []
 lpoint_list = []
 choose_point_list = []
-
 
 class Point:
     def __init__(self, x_param, y_param, num):
@@ -84,15 +82,12 @@ def locatePoint(p_list, lp_list, radius):
         for p in range(0, len(temp)):
             if temp[p].n == -1:
                 continue
-            if distance(p_list, lp_list, p, 2) > 8*radius :#这里有bug,检测到了未必只有8个，如果判断椭圆不够准确，这里会超过8。要根据距离进一步删选
+            if distance(p_list, lp_list, p, 2) > 8*radius : # 这里是为避免其他椭圆影响，只检测适当距离内的椭圆存在
                 continue
             else:
                 num += 1
-                addPoint(p_list, lp_list, p, num)   # 7 和 8 添加进数组
-            #lpoint_list.append(Point(p_list[p].x, p_list[p].y, num)) #先添加进list
-
-    #至此，lpoint_list已经实现了对p_list元素的重排序
-
+                addPoint(p_list, lp_list, p, num)   # 把 7 和 8 添加进数组
+          
     if len(lp_list) < 8:
         pass
     else:
@@ -103,8 +98,9 @@ def locatePoint(p_list, lp_list, radius):
             swapPoint(lp_list, 6, 7)    # 7\8点交换
         if cen_78_y > cen_25_y and lp_list[6].x < lp_list[7].x: # 图像是倒的
             swapPoint(lp_list, 6, 7)    # 7\8点交换
-    #-----2点位置确定完毕------#
-
+            
+    # 至此，lpoint_list已经实现了对p_list元素的重排序
+    # 7、8点的位置已完全确定，中间6点位置还没绝对确定，但无关紧要。
 
         #-----定位方案待选------#
         #把点7定位为1，点8为定位为4
