@@ -28,46 +28,6 @@ class Point:
         self.y = y_param
         self.n = num
 
-def checkEllipse(contours, cen_x, cen_y, a, b, theta, ratio = 0.6):
-    ellipse_point = []
-    a_2 = pow(a, 2)
-    b_2 = pow(b, 2)
-    angle = (theta * math.pi) / 180 # 角度单位转换成弧度单位
-
-    for i in range(0, 2*a):
-        x = -a + i
-        y_left = b * math.sqrt(1 - pow(x, 2)/a_2)
-
-        rotate_x = math.cos(angle) * x - math.sin(angle) * y_left
-        rotate_y = math.sin(angle) * x + math.cos(angle) * y_left
-
-        rotate_x += cen_x
-        rotate_y += cen_y
-        ellipse_point.append([rotate_x, rotate_y])
-
-    for j in range(0, 2*a):
-        x = a - j
-        y_right = -b * math.sqrt(1 - pow(x, 2)/a_2)
-
-        rotate_x = math.cos(angle) * x - math.sin(angle) * y_left
-        rotate_y = math.sin(angle) * x + math.cos(angle) * y_left
-
-        rotate_x += cen_x
-        rotate_y += cen_y
-        ellipse_point.append([rotate_x, rotate_y])
-
-    ell_point = np.array(ellipse_point, dtype=int) # list转array
-
-    retval = cv2.matchShapes(ell_point, contours, cv2.CONTOURS_MATCH_I1, 0) # 0 表示完全相同
-    print(retval)
-    if retval > ratio:
-        return True
-    else:
-        return False
-
-
-
-
 def isEllipse(img, x, y, a, b):
     # 越界pass
     if x + a+10 > WIDETH or y + a+10 > HEIGHT:
@@ -139,9 +99,9 @@ def locatePoint(p_list, radius):
 
 
     #-----定位方案待选------#
-    #把点7定位为1，点8为定位为4
+    #把点7定位为1
     addPoint(lpoint_list, choose_point_list, 6, 1)
-    addPoint(lpoint_list, choose_point_list, 7, 4)
+
 
     #----- 定位方案一 ------#
     #           2  3
@@ -193,9 +153,8 @@ def locatePoint(p_list, radius):
                 swapPoint(lpoint_list, 2, 5)
             addPoint(lpoint_list, choose_point_list, 2, 2)
             addPoint(lpoint_list, choose_point_list, 5, 3)
-
-
-
+    # 点8为定位为4
+    addPoint(lpoint_list, choose_point_list, 7, 4)
     #------排序完毕------#
 
 
@@ -226,9 +185,9 @@ def addPoint(src_list, new_list, i, n): #将src_list中的第i个索引的数据
     p_new = Point(src_list[i].x, src_list[i].y, n)
     new_list.append(p_new)
 
-n = 23
-img = cv2.imread("D:/img/cv.png")
-img2 = img
+number = 1
+img = cv2.imread("D:/img/source/"+str(number)+".png")
+
 method_num = 1
 
 img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -240,10 +199,6 @@ img_canny = cv2.Canny(img_thresh, 50, 150, 3)
 #cv2.imshow('canny', img_canny)
 
 image, contours, hierarchy = cv2.findContours(img_canny, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-print(contours)
-# for i in contours:
-#     cv2.circle(img, contours, 2, (0, 0, 255), -1)
 
 if contours is None:
     print('No ellipse in sight!')
@@ -275,7 +230,7 @@ else:
             theta = ell[2]
 
 
-            if isEllipse(img_thresh, cen_x, cen_y, a, b) and checkEllipse(cnt, cen_x, cen_y, a, b, theta):
+            if isEllipse(img_thresh, cen_x, cen_y, a, b):
                 count += 1
                 sum = sum + b
                 p_new = Point(cen_x, cen_y, count)
@@ -305,19 +260,17 @@ else:
         locatePoint(point_list, sum/count)
 
         #print(len(lpoint_list))
-        for i in range(0, len(lpoint_list)):
-            #print(point_list[i].x, point_list[i].y, point_list[i].n)
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            cv2.putText(img, str(lpoint_list[i].n), (lpoint_list[i].x, lpoint_list[i].y), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
+        # for i in range(0, len(lpoint_list)):
+        #     #print(point_list[i].x, point_list[i].y, point_list[i].n)
+        #     font = cv2.FONT_HERSHEY_SIMPLEX
+        #     cv2.putText(img, str(lpoint_list[i].n), (lpoint_list[i].x, lpoint_list[i].y), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
             #print(i, lpoint_list[i].x, lpoint_list[i].y, lpoint_list[i].n)
         for i in range(0, len(choose_point_list)):
             font = cv2.FONT_HERSHEY_SIMPLEX
             cv2.putText(img, str(choose_point_list[i].n), (choose_point_list[i].x, choose_point_list[i].y), font, 2, (0, 255, 0), 2,
                         cv2.LINE_AA)
-            #print(i, choose_point_list[i].x, choose_point_list[i].y, choose_point_list[i].n)
+            print(i, choose_point_list[i].x, choose_point_list[i].y, choose_point_list[i].n)
     #-----排序测试------#
-
-    #cv2.imshow('test', img2)
 
     drawCenters(point_list, img)
     #found, rvec, tvec = cv2.solvePnP(object_points, lpoint_list, )

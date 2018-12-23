@@ -28,9 +28,10 @@ camera_matrix = np.array(([693.2, 0, 666.8], # 内参矩阵
                           [0, 693.4, 347.7],
                           [0, 0, 1]), dtype=np.double)
 dist_coefs = np.array([-0.050791, 0.217163, 0.0000878, -0.000388, -0.246122], dtype=np.double) # k1 k2 p1 p2 k3
-object_3D_points = np.array(([], []), dtype=np.double)  # 3D 物理坐标
 
-image_2D_points = np.array(([0, 32.29], [35, 0], [85, 0], [120, 32.29]), dtype=np.double)   # 图像坐标点
+object_3D_points = np.array(([0, 32.29, 0], [35, 0, 0], [85, 0, 0], [120, 32.29, 0]), dtype=np.double)   # 世界坐标系上的坐标
+
+image_2D_points = []   # 图像坐标系上的坐标，待检测
 
 #  坐标构建如下：
 #  ---2--3--------->X
@@ -46,7 +47,12 @@ class Point:
         self.n = num
 
 #------筛选椭圆函数，待修正------#
-def checkEllipse_simple(img, x, y, a, b): # 函数功能：初步识别检测出靶标的椭圆（不稳定）
+def checkEllipse_simple(img, cen_x, cen_y, a_double, b_double): # 函数功能：初步识别检测出靶标的椭圆（不稳定）
+    # 近似化，img像素数组只考虑整数位置
+    x = int(np.around(cen_x))
+    y = int(np.around(cen_y))
+    a = int(np.around(a_double / 2))
+    b = int(np.around(b_double / 2))
     # 越界pass
     if x + a+3 > WIDETH or y + a+3 > HEIGHT:
         return False
@@ -69,12 +75,12 @@ def checkEllipse_simple(img, x, y, a, b): # 函数功能：初步识别检测出
 # -------对符合的椭圆重排序-------#
 def locatePoint(p_list, lp_list, radius): # 函数功能：稳定完整的实现靶标定位
     temp = []
-    for i in range(0, len(p_list)):  # 复制p_list给temp
+    for i in range(0, len(p_list)):  # 复制p_list给temp,为了保留p_list
         addPoint(p_list, temp, i, i+1)
-    #                   1 4
+    #                   6 3
     #   标准位置定义:   7     8
-    #                   2 5
-    #                   3 6
+    #                   5 2
+    #                   4 1
 
     #-----筛选出中间6点位置-----#
     Error = radius * error_alpha  # 用距离圆心占半径的百分比评估误差
@@ -98,13 +104,14 @@ def locatePoint(p_list, lp_list, radius): # 函数功能：稳定完整的实现
                     temp[i].n = -1  # -1说明已经选定
                     temp[m].n = -1
                     temp[j].n = -1
+                    # p_list[i].n = -1
+                    # p_list[m].n = -1
+                    # p_list[j].n = -1
     #-----筛选6点完毕------#
 
     #-----确定7\8点------#
-    if len(lp_list) != 6:
-        pass
-    else:
-        for p in range(0, len(temp)):
+    if len(lp_list) == 6:
+        for p in range(0, len(p_list)):
             if temp[p].n == -1:
                 continue
             if distance(p_list, lp_list, p, 2) > 8*radius : # 根据距离进一步筛选
@@ -124,12 +131,7 @@ def locatePoint(p_list, lp_list, radius): # 函数功能：稳定完整的实现
         if cen_78_y > cen_25_y and lp_list[6].x < lp_list[7].x: # 图像是倒的
             swapPoint(lp_list, 6, 7)    # 7\8点交换
 
-
-        #dadas
-        # adasdas
-
-
-        # 至此，lpoint_list已经实现了对p_list元素的重排序
+        # 至此，lpoint_list已经实现了对p_list中元素的进一步筛选和重排序
 
         #-----定位方案待选------#
         #把点7定位为1，点8为定位为4
@@ -195,14 +197,13 @@ def distance(list_1, list_2, i, j): # list_1第i个索引点和list_2第j个索�
     dis = math.sqrt(pow(list_1[i].x - list_2[j].x, 2) + pow(list_1[i].y - list_2[j].y, 2))
     return dis
 
-def swapPoint(p_list, i, j): # 交换list中第i个索引和第j个索引数据的位置、索引
-    p_list[i].n = j+1
-    p_list[j].n = i+1
-    p_list[i], p_list[j] = p_list[j], p_list[i]
+def swapPoint(list, i, j): # 交换list中第i个索引和第j个索引数据的位置、索引
+    list[i].n = j+1
+    list[j].n = i+1
+    list[i], list[j] = list[j], list[i]
 
 def addPoint(src_list, new_list, i, n): #将src_list中的第i个索引的数据添加进new_list，且num为n
-    p_new = Point(src_list[i].x, src_list[i].y, n)
-    new_list.append(p_new)
+    new_list.append(Point(src_list[i].x, src_list[i].y, n))
 
 cap = cv2.VideoCapture(1)
 
@@ -210,10 +211,9 @@ if (cap.isOpened() == False):
     print("Failed to open the camera...")
 
 else:
-    method_num = 1
+    method_num = 1  # 使用第一种定位方法
     ret = cap.set(3, WIDETH) # 设置显示尺寸 1280*720
     ret = cap.set(4, HEIGHT)
-    k = 0
     while(True):
         ret, frame = cap.read()
         ret, img = cap.read()
@@ -251,18 +251,16 @@ else:
                 # -----结束-----#
 
                 # 开始对选定的进行处理
-                cen_x = int(np.around(ell[0][0]))
-                cen_y = int(np.around(ell[0][1]))
-                a = int(np.around(a_double/2))
-                b = int(np.around(b_double/2))
+                cen_x = ell[0][0]
+                cen_y = ell[0][1]
+
                 theta = ell[2] # 旋转角度
 
-                if  checkEllipse_simple(f_thresh, cen_x, cen_y, a, b):
+                if  checkEllipse_simple(f_thresh, cen_x, cen_y, a_double, b_double):
                     #-----添加进组并计数、标记-----#
                     count += 1
-                    sum = sum + b # sum是所有短半轴的集合
-                    p_new = Point(cen_x, cen_y, count)
-                    point_list.append(p_new)
+                    sum += b_double/2 # sum是所有短半轴的集合
+                    point_list.append(Point(cen_x, cen_y, count))
 
                     # font = cv2.FONT_HERSHEY_SIMPLEX # 数字标记
                     # cv2.putText(frame, str(count), (cen_x, cen_y), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
@@ -271,38 +269,48 @@ else:
 
                     #point_list.append(p_new)
                     cv2.ellipse(frame, ell, (0, 0, 255), 2)
-                    cv2.circle(frame, (cen_x, cen_y), 2, (0, 0, 255), -1)
-
+                    cv2.circle(frame, (int(cen_x), int(cen_y)), 2, (0, 0, 255), -1)
         #----一帧椭圆检测结束-----#
-
 
         #-----处理圆心坐标点集-----#
         if len(point_list) < 8:
             print('No enough ellipse in sight!')
         else:
-            #-----排序测试------#
+            #-----重定位和排序------#
             locatePoint(point_list, lpoint_list, sum/count)
 
             for i in range(0, len(lpoint_list)):
                 font = cv2.FONT_HERSHEY_SIMPLEX
-                cv2.putText(frame, str(lpoint_list[i].n), (lpoint_list[i].x, lpoint_list[i].y), font, 1, (0, 255, 0), 2,
+                cv2.putText(frame, str(lpoint_list[i].n), (int(lpoint_list[i].x), int(lpoint_list[i].y)), font, 1, (0, 255, 0), 2,
                             cv2.LINE_AA)
 
-            for i in range(0, len(point_list)):
-                font = cv2.FONT_HERSHEY_SIMPLEX
-                cv2.putText(img, str(point_list[i].n), (point_list[i].x, point_list[i].y), font, 1, (0, 255, 0), 2,
-                            cv2.LINE_AA)
+            # for i in range(0, len(point_list)):
+            #     font = cv2.FONT_HERSHEY_SIMPLEX
+            #     cv2.putText(img, str(point_list[i].n), (point_list[i].x, point_list[i].y), font, 1, (0, 255, 0), 2,
+            #                 cv2.LINE_AA)
 
             for i in range(0, len(choose_point_list)):
                 font = cv2.FONT_HERSHEY_SIMPLEX
-                cv2.putText(img2, str(choose_point_list[i].n), (choose_point_list[i].x, choose_point_list[i].y), font, 1, (0, 255, 0), 2,
+                cv2.putText(img2, str(choose_point_list[i].n), (int(choose_point_list[i].x), int(choose_point_list[i].y)), font, 1, (0, 255, 0), 2,
                             cv2.LINE_AA)
-            #-----排序测试------#
+            #-------位置确定完毕-------#
 
+            #-------位姿解算-------#
+            if len(choose_point_list) == 4: # 运动太快会导致画面模糊，无法获取椭圆位置
+                for i in range(0, len(choose_point_list)):
+                    image_2D_points.append((choose_point_list[i].x, choose_point_list[i].y))
+                image_2D_points = np.array(image_2D_points, dtype=np.double) # list转array
+                print("数组测试：\n",image_2D_points)
+                found, rvec, tvec = cv2.solvePnP(object_3D_points, image_2D_points, camera_matrix, dist_coefs)
+                print(found)
+                print("旋转向量：\n", rvec)
+                print("平移向量：\n", tvec)
+
+        # 每次循环清空列表
         point_list = []
         lpoint_list = []
-        choose_point_list = []# 结束后置空
-        #------处理圆心坐标结束----#
+        choose_point_list = []
+        image_2D_points = []
 
         cv2.imshow('ell', frame)
         #cv2.imshow('point_lis', img)

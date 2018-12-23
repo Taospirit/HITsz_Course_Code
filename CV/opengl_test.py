@@ -29,3 +29,4 @@ while(1):
 #glutIdleFunc(drawFunc)
 # 主循环
 #glutMainLoop()
+
