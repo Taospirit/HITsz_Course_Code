@@ -72,4 +72,5 @@ Out_matrix = np.concatenate((rotM, tvec), axis=1)
 pixel = np.dot(camera_matrix, Out_matrix)
 pixel1 = np.dot(pixel, np.array([0, 100, 105, 1], dtype=np.double))
 pixel2 = pixel1/pixel1[2]
-#print(pixel2)
+print(pixel1)
+print(pixel2)
