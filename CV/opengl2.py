@@ -17,7 +17,7 @@ def drawFunc():
     glEnd()
 
     # 画点的位置
-    glPointSize(5.0)
+    glPointSize(20.0)
     glBegin(GL_POINTS)
     glColor3f(1.0, 0.0, 0.0)
     glVertex2f(0.3, 0.3)
@@ -30,6 +30,7 @@ def drawFunc():
     # 画正方形
     glColor3f(1.0, 1.0, 0)
     glBegin(GL_QUADS)
+    #相对于分割线的位置
     glVertex2f(-0.2, 0.2)
     glVertex2f(-0.2, 0.5)
     glVertex2f(-0.5, 0.5)
