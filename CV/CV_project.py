@@ -18,7 +18,7 @@ error_alpha = 0.5
 radius_alpha = 0.5
 max_radius = 120
 min_radius = 5
-cnt_threshold = 15
+cnt_threshold = 10
 
 method_num = 0  # 定位方法选择
 
@@ -30,8 +30,6 @@ dist_coefs = np.array([-0.050791, 0.217163, 0.0000878, -0.000388, -0.246122],
 object_3D_points = np.array(([-60, 148.32 ,0 ], [-25, 116.03, 0], [25, 116.03, 0], [60, 148.32, 0],
                              [-25, 158.03, 0], [25, 158.03, 0], [-25, 200.03, 0], [25, 200.03, 0]),
                             dtype=np.double)    # 世界坐标系上的坐标
-image_2D_points = []   # 图像坐标系上的坐标，待获取
-
 #  目标坐标构建如下：
 # ---2-----3---->X
 #       |
@@ -50,9 +48,10 @@ class Point:
         self.n = num
 
 #------筛选椭圆函数，待修正------#
-def checkEllipse_simple(img, cen_x, cen_y, a_double, b_double): # 函数功能：初步识别检测出靶标的椭圆（不稳定）
+def checkEllipse_simple(img, cen_x, cen_y, a_double, b_double, theta): # 函数功能：初步识别检测出靶标的椭圆（不稳定）
     x, y = int(np.around(cen_x)), int(np.around(cen_y)) # 近似化，img像素数组只考虑整数位置
     a, b = int(np.around(a_double / 2)), int(np.around(b_double / 2))
+    theta = theta * math.pi/180.0   # 角度转弧度
     # 越界pass
     if x + a+3 > WIDETH or y + a+3 > HEIGHT:
         return False
@@ -64,12 +63,22 @@ def checkEllipse_simple(img, cen_x, cen_y, a_double, b_double): # 函数功能�
             return False
         if img[y - i, x] == 0 or img[y + i, x] == 0:
             return False
-    # 框外一点儿有白色pass
-    for m in range(a+1, a+3):
-        if img[y, x + m] == 255 or img[y, x - m] == 255:
+    # 边界的短轴外一点儿有白色pass
+    for m in range(b+1, b+2):
+        offset_x = m * math.cos(theta)
+        offset_y = m * math.sin(theta)
+        if theta > 90:
+            offset_x = -offset_x
+
+        x_r = int(np.around(cen_x + offset_x))
+        y_r = int(np.around(cen_y + offset_y))
+        x_l = int(np.around(cen_x - offset_x))
+        y_l = int(np.around(cen_y - offset_y))
+
+        if img[y_r, x_r] == 255 or img[y_l, x_l] == 255:
+            #cv2.circle(img, (x_l, y_l), 2, (255, 0, 0), -1)
             return False
-        if img[y - m, x] == 255 or img[y + m,x] == 255:
-            return False
+
     return True
 
 # -------对符合的椭圆重排序-------#
@@ -167,37 +176,8 @@ def choosePoints_method1(lp_list, cp_list):
             addPoint(lp_list, cp_list, 2, 7)
             addPoint(lp_list, cp_list, 5, 8)
 
-        #-----定位方案待选------#
-        # 把点7定位为1
-        #addPoint(lp_list, cp_list, 6, 1)
-        #----- 2/3定位方案一 ------#
-        #           2  3
-        #         1      4
-        #           0  0
-        #           0  0
-        # if method_num == 1:
-        #     if cen_78_y < cen_25_y: # 图像是正的
-        #         if distance(lp_list, lp_list, 2, 6) > distance(lp_list, lp_list, 5, 6): #待选点是点3和点6
-        #             swapPoint(lp_list, 2, 5)
-        #         addPoint(lp_list, cp_list, 2, 2)
-        #         addPoint(lp_list, cp_list, 5, 3)
-        #     if cen_78_y > cen_25_y: # 图像是倒的
-        #         if distance(lp_list, lp_list, 0, 6) > distance(lp_list, lp_list, 3, 6): #待选点是点1和点4
-        #             swapPoint(lp_list, 0, 3)
-        #         addPoint(lp_list, cp_list, 0, 2)
-        #         addPoint(lp_list, cp_list, 3, 3)
-        # 点8为定位为4
-        # addPoint(lp_list, cp_list, 7, 4)
-        #------排序完毕------#
-
-def choosePoints_method2(lp_list, cp_list): # 用HU不变距做计算
-    for i in range(0, len(lp_list)):
-        for j in range(0, len(lp_list)):
-            if j == i: continue
-            for k in range(0, len(lp_list)):
-                if k == i or k == i: continue
-                pass
-
+def choosePoints_method2(lp_list, cp_list): # 用HU不变距做计算,没想好怎么实现。
+    pass
 
 def distance(list_1, list_2, i, j): # 计算list_1第i个索引点和list_2第j个索引点的距离
     return math.sqrt((list_1[i].x - list_2[j].x) ** 2 + (list_1[i].y - list_2[j].y) ** 2)
@@ -235,12 +215,19 @@ def main():
             lpoint_list = []
             choose_point_list = []
             image_2D_points = []
+            num_list = []
 
             #-----一帧基础图形处理-----#
             f_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             f_bulr = cv2.GaussianBlur(f_gray, (5, 5), 0)
-            ret,f_thresh = cv2.threshold(f_bulr, 127, 255, cv2.THRESH_BINARY_INV)  # 阈值127，变成255
-            f_can = cv2.Canny(f_thresh, 50, 150, 3)
+            # equ = cv2.equalizeHist(f_gray)
+            # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            # cl1 = clahe.apply(f_gray)
+            # ret, f = cv2.threshold(f_gray, 127, 255, cv2.THRESH_BINARY_INV)
+            # ret, f_thresh_equ = cv2.threshold(cl1, 127, 255, cv2.THRESH_BINARY_INV)  # 阈值127，变成255
+
+            ret, f_thresh = cv2.threshold(f_gray, 127, 255, cv2.THRESH_BINARY_INV)
+            f_can = cv2.Canny(f_gray, 300, 400, 3)
 
             #-----一帧椭圆检测-------#
             image, contours, hierarchy = cv2.findContours(f_can, cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
@@ -254,23 +241,24 @@ def main():
                     # ell的数据内容,是对椭圆的最小矩阵拟合
                     b_double, a_double = ell[1][0], ell[1][1]   # 拟合的矩阵宽\长
                     cen_x, cen_y = ell[0][0], ell[0][1]   # 矩阵中心坐标
-                    theta = ell[2]  # 旋转角度,暂时没用到
+                    theta = ell[2]  # 旋转角度
 
                     #-----椭圆尺寸基本筛选-----#
                     if a_double > max_radius or b_double > max_radius:  continue
                     if a_double < min_radius or b_double < min_radius:  continue
-                    #if a_double < b_double * radius_alpha or b_double < a_double * radius_alpha:    continue
+                    if a_double < b_double * radius_alpha or b_double < a_double * radius_alpha:  continue
 
                     #-----椭圆进一步筛选------#
-                    if  checkEllipse_simple(f_thresh, cen_x, cen_y, a_double, b_double):
+                    if  checkEllipse_simple(f_thresh, cen_x, cen_y, a_double, b_double, theta):
                         count += 1
                         sum += b_double/2   # sum是所有短半轴的集合
                         point_list.append(Point(cen_x, cen_y, count))
-                        r_alpha = 0
 
                         #------画椭圆及圆心-----#
                         cv2.ellipse(frame, ell, (0, 0, 255), 2)
                         cv2.circle(frame, (int(cen_x), int(cen_y)), 2, (0, 0, 255), -1)
+                        #print(len(cnt))
+                        num_list.append(len(cnt))
             #----一帧椭圆检测结束-----#
 
             #-----处理圆心坐标点集-----#
@@ -283,15 +271,15 @@ def main():
 
                 if len(choose_point_list) == 8:
                     for i in range(0, len(choose_point_list)):
-                        cv2.putText(img, str(choose_point_list[i].n), (int(choose_point_list[i].x), int(choose_point_list[i].y)), font, 1, (0, 255, 0), 2,
+                        cv2.putText(img, str(choose_point_list[i].n), (int(choose_point_list[i].x), int(choose_point_list[i].y)), font, 1, (0, 255, ), 2,
                                     cv2.LINE_AA)
                     for i in range(0, len(point_list)):
                         cv2.putText(frame, str(point_list[i].n), (int(point_list[i].x), int(point_list[i].y)), font, 1, (0, 255, 0), 2,
                                     cv2.LINE_AA)
-                    for i in range(0, len(lpoint_list)):
-                        cv2.putText(frame2, str(lpoint_list[i].n), (int(lpoint_list[i].x), int(lpoint_list[i].y)), font,
-                                    1, (0, 255, 0), 2,
-                                    cv2.LINE_AA)
+                    # for i in range(0, len(lpoint_list)):
+                    #     cv2.putText(frame2, str(lpoint_list[i].n), (int(lpoint_list[i].x), int(lpoint_list[i].y)), font,
+                    #                 1, (0, 255, 0), 1,
+                    #                 cv2.LINE_AA)
 
                     #-------位姿解算solvePNP-------#
                     for i in range(0, len(choose_point_list)):
@@ -302,18 +290,12 @@ def main():
                     found, rvec, tvec = cv2.solvePnP(object_3D_points, image_2D_points, camera_matrix, dist_coefs)
 
                     #-------测试matchShape()------#
-                    object_3D_test = np.array(([0, 23],[0, 58],[23, 81],[23, 0],[29, 23],[29, 58],[58, 23],[58, 58]), dtype=np.double)
-
+                    object_3D_test = np.array(([-60, 148.32], [-25, 116.03], [25, 116.03], [60, 148.32],
+                                                 [-25, 158.03], [25, 158.03], [-25, 200.03], [25, 200.03]), dtype=np.double)
                     retval_1 = cv2.matchShapes(object_3D_test, image_2D_points, cv2.CONTOURS_MATCH_I1, 0)
-                    retval_2 = cv2.matchShapes(object_3D_test, image_2D_points, cv2.CONTOURS_MATCH_I2, 0)
-                    retval_3 = cv2.matchShapes(object_3D_test, image_2D_points, cv2.CONTOURS_MATCH_I3, 0)
-                    #print(retval)
-                    cv2.putText(img, "Method1:" + str(retval_1), (50, 400), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
-                    cv2.putText(img, "Method2:" + str(retval_2), (50, 450), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
-                    cv2.putText(img, "Method3:" + str(retval_3), (50, 500), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
-                    #-------测试matchShape()------#
-                    rotM = cv2.Rodrigues(rvec)[0]   # 旋转向量转换成旋转矩阵
+                    cv2.putText(img, "HU_method1:" + str(retval_1), (50, 400), font, 1, (0, 0, 255), 2, cv2.LINE_AA)
                     # -----计算欧拉角----#
+                    rotM = cv2.Rodrigues(rvec)[0]  # 旋转向量转换成旋转矩阵
                     theta_Z = math.atan2(rotM[1, 0], rotM[0, 0]) * 180.0 / math.pi
                     theta_Y = math.atan2(-1.0 * rotM[2, 0], math.sqrt(rotM[2, 1] ** 2 + rotM[2, 2] ** 2)) * 180.0 / math.pi
                     theta_X = math.atan2(rotM[2, 1], rotM[2, 2]) * 180.0 / math.pi
@@ -323,13 +305,15 @@ def main():
                     cv2.putText(img, "Y_axis:" + str(y), (50, 150), font, 1, (255, 0, 0), 2, cv2.LINE_AA)
                     cv2.putText(img, "Z_axis:" + str(z), (50, 200), font, 1, (255, 0, 0), 2, cv2.LINE_AA)
 
-                    if z_dis == 0 or z_dis < z:
+                    # 测试Z轴最大值
+                    if z_dis == 0 or z_dis < z: # 统计最远Z距离
                         z_dis = z
-                        print(z_dis)
+                        print("Z轴距离：",z_dis)
+                        print("边界点数最小值：", min(num_list))
 
-                    cv2.putText(img, "X_theta:" + str(theta_X), (50, 250), font, 1, (255, 0, 0), 2, cv2.LINE_AA)
-                    cv2.putText(img, "Y_theta:" + str(theta_Y), (50, 300), font, 1, (255, 0, 0), 2, cv2.LINE_AA)
-                    cv2.putText(img, "Z_theta:" + str(theta_Z), (50, 350), font, 1, (255, 0, 0), 2, cv2.LINE_AA)
+                    cv2.putText(img, "X_theta:" + str(theta_X), (50, 250), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
+                    cv2.putText(img, "Y_theta:" + str(theta_Y), (50, 300), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
+                    cv2.putText(img, "Z_theta:" + str(theta_Z), (50, 350), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
 
                     # 对第五个点进行验证，此处选取靶标中最上面2点的中点作为验证点
                     extrinsics_matrix = np.concatenate((rotM, tvec), axis=1) # 矩阵拼接，旋转矩阵R和平移矩阵t组成齐次矩阵
@@ -337,14 +321,20 @@ def main():
                     pixel = np.dot(projection_matrix, np.array([0, 0, 0, 1], dtype=np.double))
                     pixel_unit = pixel / pixel[2]   # 归一化
                     cv2.circle(img, (int(np.around(pixel_unit[0])), int(np.around(pixel_unit[1]))), 3, (0, 0, 255), -1)
-            cv2.imshow("threshole", f_thresh)
+            #cv2.imshow('threshold', f_thresh)
+            #cv2.imshow('equ', f_thresh_equ)
+            #cv2.imshow('adpative', cl1)
+            #cv2.imshow("canny", f_can)
             cv2.imshow('choose_point_list', img)
             cv2.imshow('point_list', frame)
-            cv2.imshow('lpoint_list', frame2)
+            #cv2.imshow('lpoint_list', frame2)
             #out.write(img)
             k = cv2.waitKey(1) & 0xff
             if k == 27:
                 break
+            if k == 32:
+                cv2.imwrite("D:/save/"+str(s_num)+".png", img)
+                s_num += 1
         cv2.destroyAllWindows()
 
 if __name__ == '__main__':
