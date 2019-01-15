@@ -10,7 +10,6 @@ def find_marker(image):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (5, 5), 0)
     edged = cv2.Canny(gray, 35, 125)
-
     # find the contours in the edged image and keep the largest one;
     # 在边缘图像中找到轮廓并保持最大的轮廓
     # we'll assume that this is our piece of paper in the image

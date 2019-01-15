@@ -30,3 +30,6 @@ while(1):
 # 主循环
 #glutMainLoop()
 
+
+
+
