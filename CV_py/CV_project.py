@@ -2,25 +2,15 @@ import cv2
 import numpy as np
 import math
 
-# 守夜人宣言：
-# 长夜将至，我从今开始守望，至死方休。
-# 我将不娶妻，不封地，不生子。
-# 我将不戴王冠，不争荣宠。
-# 我将尽忠职守，生死于斯。
-# 我是黑暗中的利剑，长城上的守卫。
-# 抵御寒冷的烈焰，破晓时分的光线，唤醒眠者的号角，守护王国的坚盾。
-# 我将生命与荣耀献给守夜人，今夜如此，夜夜皆然。
-
 WIDETH = 1280
 HEIGHT = 720
-
 error_alpha = 0.5
 radius_alpha = 0.5
 max_radius = 120
 min_radius = 5
 cnt_threshold = 10
 
-method_num = 0  # 定位方法选择
+# method_num = 0  # 定位方法选择
 
 camera_matrix = np.array(([693.2, 0, 666.8], # 内参矩阵
                           [0, 693.4, 347.7],
@@ -68,7 +58,7 @@ def checkEllipse_simple(img, cen_x, cen_y, a_double, b_double, theta): # 函数�
         offset_x = m * math.cos(theta)
         offset_y = m * math.sin(theta)
         if theta > 90:
-            offset_x = -offset_x
+            offset_x *= -1.0
 
         x_r = int(np.around(cen_x + offset_x))
         y_r = int(np.around(cen_y + offset_y))
@@ -78,7 +68,6 @@ def checkEllipse_simple(img, cen_x, cen_y, a_double, b_double, theta): # 函数�
         if img[y_r, x_r] == 255 or img[y_l, x_l] == 255:
             #cv2.circle(img, (x_l, y_l), 2, (255, 0, 0), -1)
             return False
-
     return True
 
 # -------对符合的椭圆重排序-------#
@@ -183,15 +172,11 @@ def distance(list_1, list_2, i, j): # 计算list_1第i个索引点和list_2第j�
     return math.sqrt((list_1[i].x - list_2[j].x) ** 2 + (list_1[i].y - list_2[j].y) ** 2)
 
 def swapPoint(list, i, j): # 交换list中第i个索引和第j个索引数据的位置、索引
-    list[i].n = j+1
-    list[j].n = i+1
+    list[i].n, list[j].n = j+1, i+1
     list[i], list[j] = list[j], list[i]
 
 def addPoint(src_list, new_list, i, n): #将src_list中的第i个索引的数据添加进new_list，且num为n
     new_list.append(Point(src_list[i].x, src_list[i].y, n))
-
-def mergeSort(): # 归并排序算法测试
-    pass
 
 def main():
     cap = cv2.VideoCapture(1)
@@ -201,15 +186,13 @@ def main():
         ret = cap.set(3, WIDETH) # 设置显示尺寸 1280*720
         ret = cap.set(4, HEIGHT)
         font = cv2.FONT_HERSHEY_SIMPLEX  # 字体设置
-        z_dis = 0 # Z轴距离
         # demo录制
         # fourcc = cv2.VideoWriter_fourcc(*'XVID')
         # out = cv2.VideoWriter('output.avi', fourcc, 20.0, (1280, 720))
         while(True):
-            ret, frame = cap.read()
-            ret, frame2 = cap.read()
             ret, img = cap.read()
-
+            ret, frame = cap.read()
+            
             # 每次循环初始化列表
             point_list = []
             lpoint_list = []
@@ -257,7 +240,6 @@ def main():
                         #------画椭圆及圆心-----#
                         cv2.ellipse(frame, ell, (0, 0, 255), 2)
                         cv2.circle(frame, (int(cen_x), int(cen_y)), 2, (0, 0, 255), -1)
-                        #print(len(cnt))
                         num_list.append(len(cnt))
             #----一帧椭圆检测结束-----#
 
@@ -276,19 +258,13 @@ def main():
                     for i in range(0, len(point_list)):
                         cv2.putText(frame, str(point_list[i].n), (int(point_list[i].x), int(point_list[i].y)), font, 1, (0, 255, 0), 2,
                                     cv2.LINE_AA)
-                    # for i in range(0, len(lpoint_list)):
-                    #     cv2.putText(frame2, str(lpoint_list[i].n), (int(lpoint_list[i].x), int(lpoint_list[i].y)), font,
-                    #                 1, (0, 255, 0), 1,
-                    #                 cv2.LINE_AA)
 
                     #-------位姿解算solvePNP-------#
                     for i in range(0, len(choose_point_list)):
                         image_2D_points.append((choose_point_list[i].x, choose_point_list[i].y))
-
                     image_2D_points = np.array(image_2D_points, dtype=np.double) # list转array
-
                     found, rvec, tvec = cv2.solvePnP(object_3D_points, image_2D_points, camera_matrix, dist_coefs)
-
+                    
                     #-------测试matchShape()------#
                     object_3D_test = np.array(([-60, 148.32], [-25, 116.03], [25, 116.03], [60, 148.32],
                                                  [-25, 158.03], [25, 158.03], [-25, 200.03], [25, 200.03]), dtype=np.double)
@@ -304,37 +280,27 @@ def main():
                     cv2.putText(img, "X_axis:" + str(x), (50, 100), font, 1, (255, 0, 0), 2, cv2.LINE_AA)
                     cv2.putText(img, "Y_axis:" + str(y), (50, 150), font, 1, (255, 0, 0), 2, cv2.LINE_AA)
                     cv2.putText(img, "Z_axis:" + str(z), (50, 200), font, 1, (255, 0, 0), 2, cv2.LINE_AA)
-
-                    # 测试Z轴最大值
-                    if z_dis == 0 or z_dis < z: # 统计最远Z距离
-                        z_dis = z
-                        print("Z轴距离：",z_dis)
-                        print("边界点数最小值：", min(num_list))
-
                     cv2.putText(img, "X_theta:" + str(theta_X), (50, 250), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
                     cv2.putText(img, "Y_theta:" + str(theta_Y), (50, 300), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
                     cv2.putText(img, "Z_theta:" + str(theta_Z), (50, 350), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
-
+                    
                     # 对第五个点进行验证，此处选取靶标中最上面2点的中点作为验证点
                     extrinsics_matrix = np.concatenate((rotM, tvec), axis=1) # 矩阵拼接，旋转矩阵R和平移矩阵t组成齐次矩阵
                     projection_matrix = np.dot(camera_matrix, extrinsics_matrix)     # np.dot(a,b):a*b矩阵相乘
+                    # 计算世界坐标原点在相机图像中的新坐标
                     pixel = np.dot(projection_matrix, np.array([0, 0, 0, 1], dtype=np.double))
                     pixel_unit = pixel / pixel[2]   # 归一化
                     cv2.circle(img, (int(np.around(pixel_unit[0])), int(np.around(pixel_unit[1]))), 3, (0, 0, 255), -1)
-            #cv2.imshow('threshold', f_thresh)
-            #cv2.imshow('equ', f_thresh_equ)
-            #cv2.imshow('adpative', cl1)
-            #cv2.imshow("canny", f_can)
+            
             cv2.imshow('choose_point_list', img)
             cv2.imshow('point_list', frame)
-            #cv2.imshow('lpoint_list', frame2)
-            #out.write(img)
+
             k = cv2.waitKey(1) & 0xff
             if k == 27:
                 break
-            if k == 32:
-                cv2.imwrite("D:/save/"+str(s_num)+".png", img)
-                s_num += 1
+            # if k == 32:
+            #     cv2.imwrite("D:/save/"+str(s_num)+".png", img)
+            #     s_num += 1
         cv2.destroyAllWindows()
 
 if __name__ == '__main__':
