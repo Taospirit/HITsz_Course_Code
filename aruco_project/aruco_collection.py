@@ -4,7 +4,7 @@
 @Github: https://github.com/Taospirit
 @Date: 2019-07-10 11:38:35
 @LastEditors: lintao
-@LastEditTime: 2019-07-10 21:37:50
+@LastEditTime: 2019-07-10 21:53:09
 '''
 import os
 import argparse
@@ -99,6 +99,9 @@ class ArucoDataCollection:
             if key == ord(self.save_origin): # save origin image
                 if not os.path.exists(self.outpath_img_origin):
                     os.makedirs(self.outpath_img_origin)
+
+                if not os.path.exists(self.outpath_img_detect):
+                    os.makedirs(self.outpath_img_detect)
 
                 if not self.img_origin_num_get:
                     img_num = self.getImgNum(self.outpath_img_origin)
